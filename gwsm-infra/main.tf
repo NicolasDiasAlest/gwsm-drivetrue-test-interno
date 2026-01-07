@@ -168,6 +168,27 @@ resource "google_compute_firewall" "allow_gwsm_callback" {
 }
 
 # ------------------------------------------------------------------------------
+# REGRA 3.1: SMB Intracluster (445/TCP)
+# ------------------------------------------------------------------------------
+# Permite acesso SMB (Server Message Block) entre todos os servidores do cluster
+# Necessário para compartilhamento de arquivos intracluster
+
+resource "google_compute_firewall" "allow_smb_internal" {
+  name    = "allow-smb-internal"
+  network = google_compute_network.gwsm_vpc.name
+  
+  allow {
+    protocol = "tcp"
+    ports    = ["445"]
+  }
+  
+  source_ranges = [var.subnet_cidr]
+  
+  description = "Permite acesso SMB intracluster (compartilhamento de arquivos)"
+  priority    = 1000
+}
+
+# ------------------------------------------------------------------------------
 # REGRA 4: HTTPS Egress (443/TCP)
 # ------------------------------------------------------------------------------
 # Permite todas as VMs acessarem internet via HTTPS
@@ -280,13 +301,15 @@ output "router_name" {
 #   - Terá IP público
 #   - Pode chamar Workers via porta 5131
 #
-# Worker Nodes:
+# Worker Node:
 #   - tags = ["worker-node"]
 #   - SEM IP público (usa NAT)
 #   - Recebe callbacks do Master na porta 5131
 #
-# Database Node:
-#   - tags = ["database-node"]
+# Database Nodes:
+#   - MySQL Server: tags = ["database-node", "mysql-server"]
+#   - CouchDB Server: tags = ["database-node", "couchdb-server"]
 #   - SEM IP público (usa NAT)
-#   - Expõe MySQL (3306) e CouchDB (5984) apenas internamente
+#   - MySQL expõe porta 3306, CouchDB expõe porta 5984
+#   - Acesso SMB (445) entre todos os servidores
 # ==============================================================================

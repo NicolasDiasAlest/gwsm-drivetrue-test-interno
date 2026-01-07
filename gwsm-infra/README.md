@@ -23,7 +23,7 @@ Este projeto provisiona uma infraestrutura completa para o Google Workspace Migr
 - **Rede isolada** (VPC customizada com subnet privada)
 - **Cloud NAT** (acesso à internet sem IPs públicos)
 - **Firewall seguro** (deny-by-default com segmentação por tags)
-- **4 VMs Windows Server 2019** (1 Master + 2 Workers + 1 Database)
+- **4 VMs Windows Server 2019** (1 Master + 1 Worker + 2 Database Servers)
 
 ### Princípios de Design
 
@@ -44,7 +44,7 @@ Este projeto provisiona uma infraestrutura completa para o Google Workspace Migr
                      │ (IP Público)
                      ▼
             ┌────────────────┐
-            │  Master Node   │ (n1-standard-4, 100GB SSD)
+            │  Master Node   │ (n1-standard-4, 200GB SSD)
             │  gwsm-master   │ Tag: master-node
             └────────┬───────┘
                      │
@@ -56,38 +56,38 @@ Este projeto provisiona uma infraestrutura completa para o Google Workspace Migr
     │                │                │
     ├────────────────┼────────────────┤
     │                │                │
-    │    ┌───────────┴───────────┐   │
-    │    │                       │   │
-    │    ▼                       ▼   │
-    │ ┌──────────┐         ┌──────────┐
-    │ │ Worker 1 │         │ Worker 2 │ (n1-standard-16, 200GB SSD)
-    │ │ worker-1 │         │ worker-2 │ Tag: worker-node
-    │ └────┬─────┘         └────┬─────┘
-    │      │                    │
-    │      └──────────┬─────────┘
-    │                 │
-    │                 ▼
-    │         ┌───────────────┐
-    │         │ Database Node │ (n1-standard-16, 1TB SSD)
-    │         │ gwsm-database │ Tag: database-node
-    │         │ MySQL + CouchDB│
-    │         └───────────────┘
-    │                 │
-    └─────────────────┼────────────────┘
-                      │
-                      ▼
-              ┌──────────────┐
-              │  Cloud NAT   │ (Acesso à internet)
-              └──────────────┘
+    │                ▼                │
+    │         ┌──────────┐            │
+    │         │ Worker 1 │ (n1-standard-16, 200GB SSD)
+    │         │ worker-1 │ Tag: worker-node
+    │         └────┬─────┘            │
+    │              │                  │
+    │    ┌─────────┴─────────┐       │
+    │    │                   │       │
+    │    ▼                   ▼       │
+    │ ┌─────────────┐  ┌──────────────┐
+    │ │ MySQL DB    │  │ CouchDB      │ (n1-standard-16, 1TB SSD)
+    │ │ database-   │  │ database-    │ Tag: database-node
+    │ │ mysql       │  │ couchdb      │
+    │ └─────────────┘  └──────────────┘
+    │         │              │         │
+    └─────────┼──────────────┼─────────┘
+              │              │
+              └──────┬───────┘
+                     ▼
+             ┌──────────────┐
+             │  Cloud NAT   │ (Acesso à internet)
+             └──────────────┘
 ```
 
 ### Matriz de Comunicação
 
 | Origem | Destino | Porta | Protocolo | Firewall Rule |
 |--------|---------|-------|-----------|---------------|
-| Master | Workers | 5131 | TCP | `allow-gwsm-callback` |
-| Subnet | Database | 3306 | TCP | `allow-mysql-internal` |
-| Subnet | Database | 5984 | TCP | `allow-couchdb-internal` |
+| Master | Worker | 5131 | TCP | `allow-gwsm-callback` |
+| Subnet | MySQL DB | 3306 | TCP | `allow-mysql-internal` |
+| Subnet | CouchDB | 5984 | TCP | `allow-couchdb-internal` |
+| Subnet | Todas | 445 | TCP | `allow-smb-internal` |
 | IAP (35.235.240.0/20) | Todas | 3389 | TCP | `allow-iap-rdp` |
 | Todas | Internet | 443 | TCP | `allow-https-egress` |
 | Internet | Todas | 22 | TCP | **DENY** `deny-ssh-from-internet` |
@@ -96,7 +96,7 @@ Este projeto provisiona uma infraestrutura completa para o Google Workspace Migr
 
 ## 📦 Recursos Provisionados
 
-### Rede (10 recursos)
+### Rede (11 recursos)
 
 #### VPC e Subnet
 - **`google_compute_network.gwsm_vpc`** - VPC customizada, modo REGIONAL
@@ -106,13 +106,14 @@ Este projeto provisiona uma infraestrutura completa para o Google Workspace Migr
 - **`google_compute_router.gwsm_router`** - Cloud Router (ASN 64514)
 - **`google_compute_router_nat.gwsm_nat`** - NAT Gateway para VMs sem IP público
 
-#### Firewall Rules (6 regras)
+#### Firewall Rules (7 regras)
 1. **`allow-mysql-internal`** - MySQL (3306/TCP) → database-node
 2. **`allow-couchdb-internal`** - CouchDB (5984/TCP) → database-node
-3. **`allow-gwsm-callback`** - Callback (5131/TCP) master → workers
-4. **`allow-https-egress`** - HTTPS (443/TCP) → internet (EGRESS)
-5. **`allow-iap-rdp`** - RDP (3389/TCP) via IAP
-6. **`deny-ssh-from-internet`** - **BLOQUEIA** SSH (22/TCP) da internet
+3. **`allow-gwsm-callback`** - Callback (5131/TCP) master → worker
+4. **`allow-smb-internal`** - SMB (445/TCP) intracluster
+5. **`allow-https-egress`** - HTTPS (443/TCP) → internet (EGRESS)
+6. **`allow-iap-rdp`** - RDP (3389/TCP) via IAP
+7. **`deny-ssh-from-internet`** - **BLOQUEIA** SSH (22/TCP) da internet
 
 ### Compute (5 recursos)
 
@@ -123,12 +124,12 @@ Este projeto provisiona uma infraestrutura completa para o Google Workspace Migr
 
 | VM | Machine Type | vCPUs | RAM | Disco | IP Público | Tags |
 |----|--------------|-------|-----|-------|------------|------|
-| **gwsm-master** | n1-standard-4 | 4 | 15 GB | 100 GB SSD | ✅ SIM | `master-node` |
+| **gwsm-master** | n1-standard-4 | 4 | 15 GB | 200 GB SSD | ✅ SIM | `master-node` |
 | **gwsm-worker-1** | n1-standard-16 | 16 | 60 GB | 200 GB SSD | ❌ NÃO | `worker-node` |
-| **gwsm-worker-2** | n1-standard-16 | 16 | 60 GB | 200 GB SSD | ❌ NÃO | `worker-node` |
-| **gwsm-database** | n1-standard-16 | 16 | 64 GB | 1 TB SSD | ❌ NÃO | `database-node` |
+| **gwsm-database-mysql** | n1-standard-16 | 16 | 64 GB | 1 TB SSD | ❌ NÃO | `database-node`, `mysql-server` |
+| **gwsm-database-couchdb** | n1-standard-16 | 16 | 64 GB | 1 TB SSD | ❌ NÃO | `database-node`, `couchdb-server` |
 
-**Total: 15 recursos**
+**Total: 16 recursos**
 
 ---
 
@@ -187,8 +188,8 @@ zone       = "us-east1-b"
 | `vpc_name` | string | `gwsm-vpc` | Nome da VPC |
 | `subnet_cidr` | string | `10.0.1.0/24` | CIDR da subnet |
 | `master_machine_type` | string | `n1-standard-4` | Machine type do Master |
-| `worker_machine_type` | string | `n1-standard-16` | Machine type dos Workers |
-| `database_machine_type` | string | `n1-standard-16` | Machine type do Database (PROD: 16 vCPU, 64GB RAM) |
+| `worker_machine_type` | string | `n1-standard-16` | Machine type do Worker |
+| `database_machine_type` | string | `n1-standard-16` | Machine type dos Database Nodes (PROD: 16 vCPU, 64GB RAM) |
 
 ---
 
@@ -229,11 +230,11 @@ terraform apply plan.tfplan
 # IP público do Master
 terraform output master_node_external_ip
 
-# IPs internos dos Workers
-terraform output worker_nodes_internal_ips
+# IP interno do Worker
+terraform output worker_node_internal_ip
 
-# IP interno do Database
-terraform output database_node_internal_ip
+# IPs internos dos Database Nodes
+terraform output database_nodes_internal_ips
 
 # Resumo completo
 terraform output all_instances_summary
@@ -274,25 +275,25 @@ gcloud compute start-iap-tunnel gwsm-master 3389 \
 # Conectar RDP em localhost:3389
 ```
 
-#### Worker Nodes (sem IP público)
+#### Worker Node (sem IP público)
 
 ```bash
-# Worker 1 via IAP
+# Worker via IAP
 gcloud compute start-iap-tunnel gwsm-worker-1 3389 \
   --local-host-port=localhost:3390 \
   --zone=us-east1-b
-
-# Worker 2 via IAP
-gcloud compute start-iap-tunnel gwsm-worker-2 3389 \
-  --local-host-port=localhost:3391 \
-  --zone=us-east1-b
 ```
 
-#### Database Node (sem IP público)
+#### Database Nodes (sem IP público)
 
 ```bash
-# Via IAP
-gcloud compute start-iap-tunnel gwsm-database 3389 \
+# MySQL Database via IAP
+gcloud compute start-iap-tunnel gwsm-database-mysql 3389 \
+  --local-host-port=localhost:3391 \
+  --zone=us-east1-b
+
+# CouchDB Database via IAP
+gcloud compute start-iap-tunnel gwsm-database-couchdb 3389 \
   --local-host-port=localhost:3392 \
   --zone=us-east1-b
 ```
@@ -314,14 +315,14 @@ gcloud compute reset-windows-password gwsm-master \
 
 | Recurso | Especificação | Custo Mensal (USD) |
 |---------|---------------|-------------------|
-| Master Node | n1-standard-4 + 100GB SSD | ~$150 |
-| Worker 1 | n1-standard-16 + 200GB SSD | ~$300 |
-| Worker 2 | n1-standard-16 + 200GB SSD | ~$300 |
-| Database Node | **n1-standard-16 + 1TB SSD** | **~$450** |
+| Master Node | n1-standard-4 + 200GB SSD | ~$160 |
+| Worker Node | n1-standard-16 + 200GB SSD | ~$300 |
+| MySQL Database | **n1-standard-16 + 1TB SSD** | **~$450** |
+| CouchDB Database | **n1-standard-16 + 1TB SSD** | **~$450** |
 | Cloud NAT | NAT Gateway + Egress | ~$50 |
-| **TOTAL** | | **~$1,250/mês** |
+| **TOTAL** | | **~$1,410/mês** |
 
-> **⚠️ Nota**: Database Node dimensionado conforme especificações oficiais do Google GWSM para produção (16 vCPU, 64GB RAM, 1TB storage).
+> **⚠️ Nota**: Database Nodes dimensionados conforme especificações oficiais do Google GWSM para produção (2 servidores: 16 vCPU, 64GB RAM, 1TB storage cada).
 
 ### Otimizações Implementadas
 
@@ -334,10 +335,10 @@ gcloud compute reset-windows-password gwsm-master \
 
 ```bash
 # Parar VMs quando não estiverem em uso
-gcloud compute instances stop gwsm-worker-1 gwsm-worker-2 --zone=us-east1-b
+gcloud compute instances stop gwsm-worker-1 gwsm-database-mysql gwsm-database-couchdb --zone=us-east1-b
 
 # Iniciar VMs novamente
-gcloud compute instances start gwsm-worker-1 gwsm-worker-2 --zone=us-east1-b
+gcloud compute instances start gwsm-worker-1 gwsm-database-mysql gwsm-database-couchdb --zone=us-east1-b
 ```
 
 ---
@@ -359,31 +360,38 @@ gcloud compute networks describe gwsm-vpc --project=PROJECT_ID
 
 ### Testar Conectividade
 
-#### 1. Master → Workers (porta 5131)
+#### 1. Master → Worker (porta 5131)
 
 ```powershell
 # No Master Node
 Test-NetConnection -ComputerName <worker_internal_ip> -Port 5131
 ```
 
-#### 2. Master/Workers → Database (MySQL)
+#### 2. Master/Worker → MySQL Database
 
 ```powershell
 # Em qualquer VM
-Test-NetConnection -ComputerName <database_internal_ip> -Port 3306
+Test-NetConnection -ComputerName <mysql_internal_ip> -Port 3306
 ```
 
-#### 3. Master/Workers → Database (CouchDB)
+#### 3. Master/Worker → CouchDB Database
 
 ```powershell
 # Em qualquer VM
-Test-NetConnection -ComputerName <database_internal_ip> -Port 5984
+Test-NetConnection -ComputerName <couchdb_internal_ip> -Port 5984
 ```
 
-#### 4. Acesso à Internet (via NAT)
+#### 4. SMB Intracluster (porta 445)
 
 ```powershell
-# Em Workers ou Database (sem IP público)
+# Entre quaisquer VMs
+Test-NetConnection -ComputerName <target_internal_ip> -Port 445
+```
+
+#### 5. Acesso à Internet (via NAT)
+
+```powershell
+# Em Worker ou Database Nodes (sem IP público)
 Test-NetConnection -ComputerName google.com -Port 443
 ```
 
@@ -445,7 +453,7 @@ gcloud billing accounts list
 gcloud billing projects describe PROJECT_ID
 
 # Parar VMs não utilizadas
-gcloud compute instances stop gwsm-worker-1 gwsm-worker-2 \
+gcloud compute instances stop gwsm-worker-1 gwsm-database-mysql gwsm-database-couchdb \
   --zone=us-east1-b
 ```
 
