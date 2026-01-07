@@ -44,7 +44,7 @@ variable "worker_machine_type" {
 }
 
 variable "database_machine_type" {
-  description = "Machine type for Database Node"
+  description = "Machine type for Database Node (MySQL + CouchDB) - PRODUCTION: 16 vCPU, 64GB RAM"
   type        = string
-  default     = "n1-standard-4"
+  default     = "n1-standard-16"
 }

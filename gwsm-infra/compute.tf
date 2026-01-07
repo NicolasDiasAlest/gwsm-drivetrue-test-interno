@@ -210,11 +210,12 @@ resource "google_compute_instance" "worker_2" {
 }
 
 # ==============================================================================
-# DATABASE NODE
+# DATABASE NODE - PRODUCTION SPECS
 # ==============================================================================
 # Database Node - hospeda MySQL e CouchDB
 # Sem IP público, usa Cloud NAT para acesso à internet
-# Disco maior (500 GB) para armazenar dados de migração
+# PRODUCTION: n1-standard-16 (16 vCPU, 64GB RAM) + 1TB SSD
+# Especificações oficiais Google GWSM para ambientes de produção
 
 resource "google_compute_instance" "database" {
   name         = "gwsm-database"
@@ -227,7 +228,7 @@ resource "google_compute_instance" "database" {
     auto_delete = true
     initialize_params {
       image = data.google_compute_image.windows_2019.self_link
-      size  = 500
+      size  = 1024
       type  = "pd-ssd"
     }
   }
@@ -360,7 +361,7 @@ output "all_instances_summary" {
 # Database Node:
 #   - Nome: gwsm-database
 #   - IP Público: NÃO (usa Cloud NAT)
-#   - Machine Type: n1-standard-4 (4 vCPUs, 15 GB RAM)
-#   - Disco: 500 GB SSD (MySQL + CouchDB)
+#   - Machine Type: n1-standard-16 (16 vCPUs, 64 GB RAM) - PRODUCTION
+#   - Disco: 1024 GB SSD (1TB - MySQL + CouchDB)
 #   - Tags: ["database-node"]
 # ==============================================================================

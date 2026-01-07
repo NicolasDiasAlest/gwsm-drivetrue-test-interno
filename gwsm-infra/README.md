@@ -68,7 +68,7 @@ Este projeto provisiona uma infraestrutura completa para o Google Workspace Migr
     │                 │
     │                 ▼
     │         ┌───────────────┐
-    │         │ Database Node │ (n1-standard-4, 500GB SSD)
+    │         │ Database Node │ (n1-standard-16, 1TB SSD)
     │         │ gwsm-database │ Tag: database-node
     │         │ MySQL + CouchDB│
     │         └───────────────┘
@@ -126,7 +126,7 @@ Este projeto provisiona uma infraestrutura completa para o Google Workspace Migr
 | **gwsm-master** | n1-standard-4 | 4 | 15 GB | 100 GB SSD | ✅ SIM | `master-node` |
 | **gwsm-worker-1** | n1-standard-16 | 16 | 60 GB | 200 GB SSD | ❌ NÃO | `worker-node` |
 | **gwsm-worker-2** | n1-standard-16 | 16 | 60 GB | 200 GB SSD | ❌ NÃO | `worker-node` |
-| **gwsm-database** | n1-standard-4 | 4 | 15 GB | 500 GB SSD | ❌ NÃO | `database-node` |
+| **gwsm-database** | n1-standard-16 | 16 | 64 GB | 1 TB SSD | ❌ NÃO | `database-node` |
 
 **Total: 15 recursos**
 
@@ -188,7 +188,7 @@ zone       = "us-east1-b"
 | `subnet_cidr` | string | `10.0.1.0/24` | CIDR da subnet |
 | `master_machine_type` | string | `n1-standard-4` | Machine type do Master |
 | `worker_machine_type` | string | `n1-standard-16` | Machine type dos Workers |
-| `database_machine_type` | string | `n1-standard-4` | Machine type do Database |
+| `database_machine_type` | string | `n1-standard-16` | Machine type do Database (PROD: 16 vCPU, 64GB RAM) |
 
 ---
 
@@ -310,16 +310,18 @@ gcloud compute reset-windows-password gwsm-master \
 
 ## 💰 Custos
 
-### Estimativa Mensal (us-east1)
+### Estimativa Mensal (us-east1) - PRODUÇÃO
 
 | Recurso | Especificação | Custo Mensal (USD) |
 |---------|---------------|-------------------|
 | Master Node | n1-standard-4 + 100GB SSD | ~$150 |
 | Worker 1 | n1-standard-16 + 200GB SSD | ~$300 |
 | Worker 2 | n1-standard-16 + 200GB SSD | ~$300 |
-| Database Node | n1-standard-4 + 500GB SSD | ~$150 |
+| Database Node | **n1-standard-16 + 1TB SSD** | **~$450** |
 | Cloud NAT | NAT Gateway + Egress | ~$50 |
-| **TOTAL** | | **~$950/mês** |
+| **TOTAL** | | **~$1,250/mês** |
+
+> **⚠️ Nota**: Database Node dimensionado conforme especificações oficiais do Google GWSM para produção (16 vCPU, 64GB RAM, 1TB storage).
 
 ### Otimizações Implementadas
 
